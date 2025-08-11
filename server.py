@@ -5,18 +5,20 @@ from dotenv import load_dotenv
 from pathlib import Path
 import threading
 
+# Load environment variables
 load_dotenv()
 
-MODEL_DIR = os.getenv('MODEL_DIR', '/app/model')
-MODEL_FILE = os.getenv('MODEL_FILE', 'model.gguf')
+MODEL_DIR = os.getenv("MODEL_DIR", "/app/model")
+MODEL_FILE = os.getenv("MODEL_FILE", "model.gguf")
 MODEL_PATH = str(Path(MODEL_DIR) / MODEL_FILE)
-# generation defaults
-MAX_TOKENS = int(os.getenv('MAX_TOKENS', '256'))
-TEMPERATURE = float(os.getenv('TEMPERATURE', '0.7'))
 
-app = FastAPI(title='Railway Mistral Q4_0 Inference')
+# Default generation settings
+MAX_TOKENS = int(os.getenv("MAX_TOKENS", "256"))
+TEMPERATURE = float(os.getenv("TEMPERATURE", "0.7"))
 
-# Lazy model loader to avoid startup failure if model is missing
+app = FastAPI(title="Railway Mistral Q4_0 Inference")
+
+# Lazy model loading
 _llm = None
 _llm_lock = threading.Lock()
 
@@ -26,46 +28,52 @@ class Prompt(BaseModel):
     temperature: float = TEMPERATURE
 
 def load_model():
+    """Load the LLaMA model if it's not already loaded."""
     global _llm
     from llama_cpp import Llama
-    if _llm is None:
-        print(f"Loading model from {MODEL_PATH}...")
-        _llm = Llama(model_path=MODEL_PATH, n_ctx=2048, n_threads=4)
-        print("Model loaded.")
+    with _llm_lock:
+        if _llm is None:
+            if not os.path.isfile(MODEL_PATH):
+                raise FileNotFoundError(f"Model file not found at {MODEL_PATH}")
+            print(f"Loading model from {MODEL_PATH}...")
+            _llm = Llama(model_path=MODEL_PATH, n_ctx=2048, n_threads=4)
+            print("Model loaded successfully.")
     return _llm
 
-@app.on_event('startup')
+@app.on_event("startup")
 def check_model():
-    # do not eagerly fail; just log if missing - start.sh should ensure it's downloaded
+    """Check if model exists, optionally preload it in background."""
     if not os.path.isfile(MODEL_PATH):
-        print(f"WARNING: model file not found at {MODEL_PATH}. The server will wait until file is present.")
+        print(f"WARNING: model file not found at {MODEL_PATH}. Waiting until available.")
     else:
-        # pre-load in background to warm up (optional)
         def _bg_load():
             try:
                 load_model()
             except Exception as e:
-                print('Model load failed in background:', e)
-        t = threading.Thread(target=_bg_load, daemon=True)
-        t.start()
+                print("Model preload failed:", e)
+        threading.Thread(target=_bg_load, daemon=True).start()
 
-@app.post('/generate')
+@app.post("/generate")
 def generate(p: Prompt):
+    """Generate text from the given prompt."""
     if not os.path.isfile(MODEL_PATH):
-        raise HTTPException(status_code=503, detail='Model file not available yet.')
+        raise HTTPException(status_code=503, detail="Model file not available yet.")
+    
     llm = load_model()
     try:
         out = llm(
-            p.prompt,
+            prompt=p.prompt,
             max_tokens=p.max_tokens,
             temperature=p.temperature,
-            stop=["</s>"]  # optional stop token
+            stop=["</s>"],  # Optional stop sequence
+            echo=False
         )
         text = out["choices"][0]["text"]
         return {"text": text.strip()}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Generation error: {str(e)}")
 
-@app.get('/health')
+@app.get("/health")
 def health():
-    return { 'status': 'ok', 'model_exists': os.path.isfile(MODEL_PATH) }
+    """Health check endpoint."""
+    return {"status": "ok", "model_exists": os.path.isfile(MODEL_PATH)}
