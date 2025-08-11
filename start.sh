@@ -6,7 +6,7 @@ set -euo pipefail
 # MODEL_FILE    (optional) - filename to save as under /app/model/, default: model.gguf
 # MODEL_DIR     (optional) - directory to store model, default: /app/model
 # PORT          (optional) - server port, default: 8080
-MODEL_URL=${MODEL_URL:https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf}
+MODEL_URL=${MODEL_URL:-"https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf"}
 MODEL_FILE=${MODEL_FILE:-model.gguf}
 MODEL_DIR=${MODEL_DIR:-/app/model}
 PORT=${PORT:-8080}
