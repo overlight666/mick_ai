@@ -55,10 +55,14 @@ def generate(p: Prompt):
         raise HTTPException(status_code=503, detail='Model file not available yet.')
     llm = load_model()
     try:
-        out = llm.create(prompt=p.prompt, max_tokens=p.max_tokens, temperature=p.temperature)
-        # llama-cpp-python returns dict with 'choices' list for create()
-        text = out['choices'][0]['text']
-        return { 'text': text }
+        out = llm(
+            p.prompt,
+            max_tokens=p.max_tokens,
+            temperature=p.temperature,
+            stop=["</s>"]  # optional stop token
+        )
+        text = out["choices"][0]["text"]
+        return {"text": text.strip()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
