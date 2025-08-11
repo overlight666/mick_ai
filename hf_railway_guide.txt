@@ -1,0 +1,104 @@
+
+# Comprehensive Guide: Deploying and Using a Hugging Face Model in Railway (Free Tier)
+
+## 1. Overview
+This guide walks you through hosting your Hugging Face model on Railway for free. The model will be downloaded from Hugging Face at container startup, avoiding large repo uploads.
+
+---
+
+## 2. Prerequisites
+- **Railway account** (Free Tier): https://railway.app/
+- **Hugging Face account** with model uploaded (Public or private with token)
+- **GitHub account** (for connecting to Railway)
+
+---
+
+## 3. Preparing Your Hugging Face Model
+1. Go to https://huggingface.co/
+2. Create a new repository for your model (public or private).
+3. Upload your model files (`pytorch_model.bin`, `tokenizer.json`, etc.)
+4. Copy the model repository URL (e.g., `username/my-model`).
+5. If private, create an **Access Token** from Hugging Face settings.
+
+---
+
+## 4. Preparing the Railway Deployment
+
+### Step 1: Create a GitHub Repository
+1. Create a new GitHub repo (e.g., `railway-hf-api`).
+2. Add the following `requirements.txt`:
+```
+transformers==4.42.3
+torch
+flask
+gunicorn
+```
+3. Add the following `server.py`:
+```python
+from flask import Flask, request, jsonify
+from transformers import pipeline
+import os
+
+app = Flask(__name__)
+
+MODEL_NAME = os.getenv("HF_MODEL", "username/my-model")
+AUTH_TOKEN = os.getenv("HF_AUTH_TOKEN", None)
+
+pipe = pipeline("text-generation", model=MODEL_NAME, use_auth_token=AUTH_TOKEN)
+
+@app.route("/generate", methods=["POST"])
+def generate():
+    data = request.json
+    prompt = data.get("prompt", "")
+    max_length = data.get("max_length", 50)
+    output = pipe(prompt, max_length=max_length)
+    return jsonify(output)
+
+@app.route("/", methods=["GET"])
+def health():
+    return {"status": "ok"}
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
+```
+4. Add `Procfile`:
+```
+web: gunicorn server:app
+```
+
+---
+
+### Step 2: Connect to Railway
+1. Go to https://railway.app/
+2. Create a **New Project** → Deploy from GitHub.
+3. Select your repo.
+4. Add **Environment Variables**:
+    - `HF_MODEL`: your Hugging Face model name (e.g., `username/my-model`)
+    - `HF_AUTH_TOKEN`: Hugging Face token (if private)
+5. Deploy.
+
+---
+
+## 5. Using Your Railway API
+Once deployed, Railway gives you a public URL like:
+```
+https://your-app.up.railway.app
+```
+
+**Example request:**
+```bash
+curl -X POST "https://your-app.up.railway.app/generate" -H "Content-Type: application/json" -d '{"prompt": "Once upon a time", "max_length": 50}'
+```
+
+---
+
+## 6. Notes for Free Tier
+- Railway free tier gives **500 hours/month** and **512 MB RAM**.
+- Large models might cause memory errors. Use smaller models like `distilGPT2`.
+- Restart app periodically if it goes idle.
+
+---
+
+## 7. Next Steps
+- Add authentication to your API.
+- Cache the model locally in Railway volume to avoid downloading every time.
